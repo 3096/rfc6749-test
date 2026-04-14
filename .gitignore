@@ -1,0 +1,5 @@
+# Private keys are optional to commit (they're just test keys)
+# Uncomment the line below if you prefer not to commit them
+# *.pem
+.rotation-state/
+README.md

@@ -1,0 +1,7 @@
+{
+  "issuer": "https://GITHUB_USER.github.io/oidc-scheduler-test",
+  "authorization_endpoint": "https://GITHUB_USER.github.io/oidc-scheduler-test/authorize",
+  "token_endpoint": "https://GITHUB_USER.github.io/oidc-scheduler-test/token",
+  "userinfo_endpoint": "https://GITHUB_USER.github.io/oidc-scheduler-test/userinfo",
+  "jwks_uri": "https://GITHUB_USER.github.io/oidc-scheduler-test/jwks.json"
+}
