@@ -38,6 +38,16 @@ import uuid
 GO_STYLE_PAGES_CHECK_USER_AGENT = 'Go-http-client/2.0'
 
 
+def log(message=''):
+    """Print each output line with a UTC timestamp prefix."""
+    timestamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    lines = str(message).splitlines()
+    if not lines:
+        lines = ['']
+    for line in lines:
+        print(f'[{timestamp}] {line}')
+
+
 def int_to_base64url(n):
     """Convert a Python integer to base64url encoding (no padding)."""
     length = (n.bit_length() + 7) // 8
@@ -80,7 +90,7 @@ def generate_rsa_key(key_file):
         ['openssl', 'genrsa', '-out', key_file, '2048'],
         capture_output=True, check=True
     )
-    print(f"  Generated RSA key: {key_file}")
+    log(f"Generated RSA key: {key_file}")
 
 
 @dataclass
@@ -212,7 +222,7 @@ async def commit_and_push(repo_dir, remote_name, branch_name, commit_message, st
     await run_git_command(repo_dir, ['add', '--'] + staged_paths)
 
     if not await has_staged_changes(repo_dir, staged_paths):
-        print('  No git changes detected after staging; skipping commit and push')
+        log('No git changes detected after staging; skipping commit and push')
         return False
 
     await run_git_command(repo_dir, ['commit', '--only', '-m', commit_message, '--'] + staged_paths)
@@ -234,15 +244,14 @@ def build_rotation_key_path(state_dir, kid):
 
 def print_summary(base_url, output_dir, kid, key_file, openid_path, jwks_path):
     """Print a consistent summary after content generation."""
-    print(f"\nGenerated mock OIDC content in {output_dir}")
-    print(f"  OpenID Config: {base_url}/.well-known/openid-configuration.json")
-    print(f"  JWKS:          {base_url}/jwks.json")
-    print(f"  Key ID (kid):  {kid}")
-    print(f"  Key file:      {key_file}")
-    print()
-    print('To verify locally:')
-    print(f"  cat {shlex.quote(openid_path)}")
-    print(f"  cat {shlex.quote(jwks_path)}")
+    log(f"Generated mock OIDC content in {output_dir}")
+    log(f"OpenID Config: {base_url}/.well-known/openid-configuration.json")
+    log(f"JWKS:          {base_url}/jwks.json")
+    log(f"Key ID (kid):  {kid}")
+    log(f"Key file:      {key_file}")
+    log('To verify locally:')
+    log(f"cat {shlex.quote(openid_path)}")
+    log(f"cat {shlex.quote(jwks_path)}")
 
 
 async def fetch_json(url, timeout_seconds):
@@ -286,7 +295,7 @@ async def perform_rotation(base_url, output_dir, kid_prefix, repo_dir, remote_na
     kid = generate_rotation_kid(kid_prefix)
     key_file = build_rotation_key_path(state_dir, kid)
 
-    print(f"\n[rotation] Generating rotated key {kid}")
+    log(f"[rotation] Generating rotated key {kid}")
     await asyncio.to_thread(generate_rsa_key, key_file)
     openid_path, jwks_path = await write_mock_oidc_content(base_url, output_dir, kid, key_file)
     print_summary(base_url, output_dir, kid, key_file, openid_path, jwks_path)
@@ -300,7 +309,7 @@ async def perform_rotation(base_url, output_dir, kid_prefix, repo_dir, remote_na
     state.last_generated_kid = kid
     if pushed:
         state.last_pushed_kid = kid
-        print(f'  Pushed commit: {commit_message}')
+        log(f'Pushed commit: {commit_message}')
 
 
 async def check_pages_status(pages_check_url, pages_check_timeout_seconds, state):
@@ -309,23 +318,23 @@ async def check_pages_status(pages_check_url, pages_check_timeout_seconds, state
     try:
         payload = await fetch_json(checked_url, pages_check_timeout_seconds)
     except (subprocess.CalledProcessError, TimeoutError, json.JSONDecodeError) as exc:
-        print(f'[pages] Check failed for {pages_check_url}: {exc}')
+        log(f'[pages] Check failed for {pages_check_url}: {exc}')
         return
 
     deployed_kid = extract_first_kid(payload)
     if deployed_kid is None:
-        print(f'[pages] No kid found in {pages_check_url}')
+        log(f'[pages] No kid found in {pages_check_url}')
         return
 
     if deployed_kid != state.last_seen_pages_kid:
-        print(f'[pages] Deployed kid is now {deployed_kid}')
+        log(f'[pages] Deployed kid is now {deployed_kid}')
         state.last_seen_pages_kid = deployed_kid
 
     if state.last_pushed_kid:
         if deployed_kid == state.last_pushed_kid:
-            print(f'[pages] GitHub Pages is serving the latest pushed kid {deployed_kid}')
+            log(f'[pages] GitHub Pages is serving the latest pushed kid {deployed_kid}')
         else:
-            print(
+            log(
                 '[pages] Waiting for Pages to catch up: '
                 f'deployed={deployed_kid}, latest-pushed={state.last_pushed_kid}'
             )
@@ -340,7 +349,7 @@ async def run_periodic_task(name, interval_seconds, action, stop_event):
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            print(f'[{name}] Task failed: {exc}')
+            log(f'[{name}] Task failed: {exc}')
 
         remaining = interval_seconds - (time.monotonic() - started_at)
         if remaining <= 0:
@@ -373,9 +382,9 @@ async def run_service_mode(
         state_dir = os.path.join(output_dir, '.rotation-state')
         os.makedirs(state_dir, exist_ok=True)
 
-        print(f'Starting automatic rotation every {interval_seconds} seconds')
-        print(f'  Repo:          {repo_dir}')
-        print(f'  Remote/branch: {remote_name}/{branch_name}')
+        log(f'Starting automatic rotation every {interval_seconds} seconds')
+        log(f'Repo:          {repo_dir}')
+        log(f'Remote/branch: {remote_name}/{branch_name}')
 
         tasks.append(asyncio.create_task(run_periodic_task(
             'rotation',
@@ -395,8 +404,8 @@ async def run_service_mode(
 
     if pages_check_interval_seconds is not None:
         effective_pages_check_url = pages_check_url or f'{base_url}/jwks.json'
-        print(f'Starting Pages check every {pages_check_interval_seconds} seconds')
-        print(f'  Check URL:      {effective_pages_check_url}')
+        log(f'Starting Pages check every {pages_check_interval_seconds} seconds')
+        log(f'Check URL:      {effective_pages_check_url}')
         tasks.append(asyncio.create_task(run_periodic_task(
             'pages',
             pages_check_interval_seconds,
@@ -411,7 +420,7 @@ async def run_service_mode(
     if not tasks:
         raise RuntimeError('No periodic tasks configured')
 
-    print('  Stop with Ctrl-C')
+    log('Stop with Ctrl-C')
 
     try:
         await asyncio.gather(*tasks)
@@ -420,7 +429,7 @@ async def run_service_mode(
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-        print('\nService stopped')
+        log('Service stopped')
 
 
 async def main_async():
