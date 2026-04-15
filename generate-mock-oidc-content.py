@@ -31,10 +31,11 @@ import subprocess
 import tempfile
 import time
 from typing import Optional
-from urllib import error as urllib_error
 from urllib import parse as urllib_parse
-from urllib import request as urllib_request
 import uuid
+
+
+GO_STYLE_PAGES_CHECK_USER_AGENT = 'Go-http-client/2.0'
 
 
 def int_to_base64url(n):
@@ -244,24 +245,23 @@ def print_summary(base_url, output_dir, kid, key_file, openid_path, jwks_path):
     print(f"  cat {shlex.quote(jwks_path)}")
 
 
-def fetch_json_sync(url, timeout_seconds):
-    """Fetch JSON over HTTP in a worker thread."""
-    request = urllib_request.Request(
-        url,
-        headers={
-            'Accept': 'application/json',
-            'Cache-Control': 'no-cache',
-        },
-    )
-    with urllib_request.urlopen(request, timeout=timeout_seconds) as response:
-        charset = response.headers.get_content_charset() or 'utf-8'
-        payload = response.read().decode(charset)
-        return json.loads(payload)
-
-
 async def fetch_json(url, timeout_seconds):
-    """Fetch JSON without blocking the event loop."""
-    return await asyncio.to_thread(fetch_json_sync, url, timeout_seconds)
+    """Fetch JSON using a Go-like curl request"""
+    result = await run_command([
+        'curl',
+        '--silent',
+        '--show-error',
+        '--fail',
+        '--location',
+        '--http2',
+        '--tlsv1.2',
+        '--max-time',
+        str(timeout_seconds),
+        '--user-agent',
+        GO_STYLE_PAGES_CHECK_USER_AGENT,
+        url,
+    ], capture_output=True)
+    return json.loads(result.stdout)
 
 
 def add_cache_buster(url):
@@ -308,7 +308,7 @@ async def check_pages_status(pages_check_url, pages_check_timeout_seconds, state
     checked_url = add_cache_buster(pages_check_url)
     try:
         payload = await fetch_json(checked_url, pages_check_timeout_seconds)
-    except (urllib_error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+    except (subprocess.CalledProcessError, TimeoutError, json.JSONDecodeError) as exc:
         print(f'[pages] Check failed for {pages_check_url}: {exc}')
         return
 
