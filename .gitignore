@@ -3,3 +3,4 @@
 # *.pem
 .rotation-state/
 README.md
+*.sh
