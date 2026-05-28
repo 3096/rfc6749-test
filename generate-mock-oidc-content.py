@@ -143,10 +143,17 @@ def write_mock_oidc_content_sync(base_url, output_dir, kid, key_file):
         "userinfo_endpoint": f"{base_url}/userinfo",
         "jwks_uri": f"{base_url}/jwks.json",
     }
+    openid_config_json = json.dumps(openid_config, indent=2) + '\n'
+
+    # Write with .json extension
     openid_path = os.path.join(wellknown_dir, 'openid-configuration.json')
     with open(openid_path, 'w') as f:
-        json.dump(openid_config, f, indent=2)
-        f.write('\n')
+        f.write(openid_config_json)
+
+    # Write without extension (for RFC compatibility on GitHub Pages)
+    openid_path_no_ext = os.path.join(wellknown_dir, 'openid-configuration.html')
+    with open(openid_path_no_ext, 'w') as f:
+        f.write(openid_config_json)
 
     jwks = {
         "keys": [{
@@ -163,7 +170,7 @@ def write_mock_oidc_content_sync(base_url, output_dir, kid, key_file):
         json.dump(jwks, f, indent=2)
         f.write('\n')
 
-    return openid_path, jwks_path
+    return openid_path, openid_path_no_ext, jwks_path
 
 
 async def write_mock_oidc_content(base_url, output_dir, kid, key_file):
@@ -297,11 +304,12 @@ async def perform_rotation(base_url, output_dir, kid_prefix, repo_dir, remote_na
 
     log(f"[rotation] Generating rotated key {kid}")
     await asyncio.to_thread(generate_rsa_key, key_file)
-    openid_path, jwks_path = await write_mock_oidc_content(base_url, output_dir, kid, key_file)
+    openid_path, openid_path_no_ext, jwks_path = await write_mock_oidc_content(base_url, output_dir, kid, key_file)
     print_summary(base_url, output_dir, kid, key_file, openid_path, jwks_path)
 
     staged_paths = [
         os.path.relpath(openid_path, repo_dir),
+        os.path.relpath(openid_path_no_ext, repo_dir),
         os.path.relpath(jwks_path, repo_dir),
     ]
     commit_message = f'Rotate mock OIDC key: kid={kid}'
@@ -513,7 +521,7 @@ async def main_async():
     if not os.path.exists(key_file):
         await asyncio.to_thread(generate_rsa_key, key_file)
 
-    openid_path, jwks_path = await write_mock_oidc_content(base_url, output_dir, args.kid, key_file)
+    openid_path, openid_path_no_ext, jwks_path = await write_mock_oidc_content(base_url, output_dir, args.kid, key_file)
     print_summary(base_url, output_dir, args.kid, key_file, openid_path, jwks_path)
 
 
